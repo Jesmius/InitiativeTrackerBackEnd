@@ -98,7 +98,7 @@ SIMPLE_JWT = {
 
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:5500,http://127.0.0.1:5500',
+    default='http://localhost:5500,http://127.0.0.1:5500,https://jesmius.github.io',
     cast=lambda v: [s.strip() for s in v.split(',')]
 )
 
