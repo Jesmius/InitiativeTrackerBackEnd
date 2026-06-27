@@ -116,6 +116,7 @@ class CombatParticipant(models.Model):
     order = models.IntegerField(default=0)
     is_alive = models.BooleanField(default=True)
     current_hp = models.IntegerField(null=True, blank=True)
+    name_override = models.CharField(max_length=100, blank=True, default='')
 
     class Meta:
         ordering = ['order']
@@ -128,6 +129,8 @@ class CombatParticipant(models.Model):
 
     @property
     def display_name(self):
+        if self.name_override:
+            return self.name_override
         if self.character:
             return self.character.name
         if self.enemy:

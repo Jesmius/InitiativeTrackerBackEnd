@@ -81,7 +81,7 @@ class CombatParticipantSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'combat', 'character', 'character_name', 'character_player_id',
             'enemy', 'enemy_name', 'display_name', 'participant_type',
-            'initiative_value', 'order', 'is_alive', 'current_hp'
+            'initiative_value', 'order', 'is_alive', 'current_hp', 'name_override'
         ]
         read_only_fields = ['id', 'combat']
 
