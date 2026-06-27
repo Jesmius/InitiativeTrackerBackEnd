@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import UserProfile, Character, Enemy, Combat, CombatParticipant
+from .models import UserProfile, Character, Enemy, Combat, CombatParticipant, PartyMember
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -71,6 +71,7 @@ class EnemySerializer(serializers.ModelSerializer):
 
 class CombatParticipantSerializer(serializers.ModelSerializer):
     character_name = serializers.CharField(source='character.name', read_only=True, allow_null=True)
+    character_player_id = serializers.IntegerField(source='character.player_id', read_only=True, allow_null=True)
     enemy_name = serializers.CharField(source='enemy.name', read_only=True, allow_null=True)
     display_name = serializers.CharField(read_only=True)
     participant_type = serializers.CharField(read_only=True)
@@ -78,13 +79,15 @@ class CombatParticipantSerializer(serializers.ModelSerializer):
     class Meta:
         model = CombatParticipant
         fields = [
-            'id', 'combat', 'character', 'character_name',
+            'id', 'combat', 'character', 'character_name', 'character_player_id',
             'enemy', 'enemy_name', 'display_name', 'participant_type',
             'initiative_value', 'order', 'is_alive', 'current_hp'
         ]
         read_only_fields = ['id', 'combat']
 
     def validate(self, data):
+        if self.partial:
+            return data
         character = data.get('character')
         enemy = data.get('enemy')
         if not character and not enemy:
@@ -92,6 +95,15 @@ class CombatParticipantSerializer(serializers.ModelSerializer):
         if character and enemy:
             raise serializers.ValidationError("Um participante não pode ser personagem e inimigo ao mesmo tempo.")
         return data
+
+
+class PartyMemberSerializer(serializers.ModelSerializer):
+    player_username = serializers.CharField(source='player.username', read_only=True)
+    player_id = serializers.IntegerField(source='player.id', read_only=True)
+
+    class Meta:
+        model = PartyMember
+        fields = ['id', 'player_id', 'player_username']
 
 
 class CombatParticipantCreateSerializer(CombatParticipantSerializer):

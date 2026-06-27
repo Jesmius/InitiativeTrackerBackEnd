@@ -14,5 +14,7 @@ urlpatterns = [
     path('auth/change-password/', views.ChangePasswordView.as_view(), name='change-password'),
     path('combats/<int:combat_id>/participants/', views.CombatParticipantListView.as_view(), name='combat-participants'),
     path('participants/<int:pk>/', views.CombatParticipantDetailView.as_view(), name='participant-detail'),
+    path('party/', views.PartyMemberListView.as_view(), name='party-members'),
+    path('party/<int:pk>/', views.PartyMemberDetailView.as_view(), name='party-member-detail'),
     path('', include(router.urls)),
 ]

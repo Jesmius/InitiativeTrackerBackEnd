@@ -22,6 +22,17 @@ class UserProfile(models.Model):
         return self.role == self.ROLE_PLAYER
 
 
+class PartyMember(models.Model):
+    gm = models.ForeignKey(User, on_delete=models.CASCADE, related_name='party_members')
+    player = models.ForeignKey(User, on_delete=models.CASCADE, related_name='gm_memberships')
+
+    class Meta:
+        unique_together = [('gm', 'player')]
+
+    def __str__(self):
+        return f"{self.player.username} na campanha de {self.gm.username}"
+
+
 class Character(models.Model):
     name = models.CharField(max_length=100)
     player = models.ForeignKey(User, on_delete=models.CASCADE, related_name='characters')

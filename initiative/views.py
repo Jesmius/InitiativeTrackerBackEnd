@@ -6,12 +6,13 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import UserProfile, Character, Enemy, Combat, CombatParticipant
+from .models import UserProfile, Character, Enemy, Combat, CombatParticipant, PartyMember
 from .permissions import IsMaster, IsPlayer
 from .serializers import (
     RegisterSerializer, UserSerializer, ChangePasswordSerializer, ForgotPasswordSerializer,
     CharacterSerializer, EnemySerializer,
     CombatSerializer, CombatParticipantSerializer, CombatParticipantCreateSerializer,
+    PartyMemberSerializer,
 )
 
 
@@ -76,7 +77,8 @@ class CharacterViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if hasattr(user, 'profile') and user.profile.is_master():
-            return Character.objects.all()
+            player_ids = PartyMember.objects.filter(gm=user).values_list('player', flat=True)
+            return Character.objects.filter(player__in=player_ids)
         return Character.objects.filter(player=user)
 
     def perform_create(self, serializer):
@@ -219,7 +221,10 @@ class CombatParticipantListView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         combat = self.get_combat()
         next_order = CombatParticipant.objects.filter(combat=combat).count()
-        serializer.save(combat=combat, order=next_order)
+        participant = serializer.save(combat=combat, order=next_order)
+        if participant.enemy and participant.current_hp is None:
+            participant.current_hp = participant.enemy.hp
+            participant.save()
 
     def list(self, request, *args, **kwargs):
         combat = self.get_combat()
@@ -229,16 +234,69 @@ class CombatParticipantListView(generics.ListCreateAPIView):
 
 class CombatParticipantDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CombatParticipantSerializer
-    permission_classes = [IsAuthenticated, IsMaster]
+    permission_classes = [IsAuthenticated]
     queryset = CombatParticipant.objects.all()
 
-    def perform_update(self, serializer):
+    def update(self, request, *args, **kwargs):
         participant = self.get_object()
-        if participant.combat.master != self.request.user:
+        user = request.user
+        is_master = hasattr(user, 'profile') and user.profile.is_master()
+
+        if not is_master:
+            if not (participant.character and participant.character.player == user):
+                raise PermissionDenied("Você não tem permissão para editar este participante.")
+            current_hp_raw = request.data.get('current_hp')
+            if current_hp_raw is None:
+                raise PermissionDenied("Jogadores só podem atualizar o HP de seus personagens.")
+            hp = max(0, int(current_hp_raw))
+            participant.current_hp = hp
+            participant.is_alive = hp > 0
+            participant.save()
+            serializer = self.get_serializer(participant)
+            return Response(serializer.data)
+
+        if participant.combat.master != user:
             raise PermissionDenied("Você não é o mestre deste combate.")
-        serializer.save()
+        return super().update(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
-        if instance.combat.master != self.request.user:
+        user = self.request.user
+        if not hasattr(user, 'profile') or not user.profile.is_master():
+            raise PermissionDenied("Apenas mestres podem remover participantes.")
+        if instance.combat.master != user:
             raise PermissionDenied("Você não é o mestre deste combate.")
+        instance.delete()
+
+
+class PartyMemberListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated, IsMaster]
+    serializer_class = PartyMemberSerializer
+
+    def get_queryset(self):
+        return PartyMember.objects.filter(gm=self.request.user).select_related('player')
+
+    def post(self, request, *args, **kwargs):
+        username = request.data.get('username', '').strip()
+        if not username:
+            return Response({'detail': 'Username é obrigatório.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            player = User.objects.get(username=username)
+        except User.DoesNotExist:
+            return Response({'detail': 'Jogador não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        if not hasattr(player, 'profile') or player.profile.role != UserProfile.ROLE_PLAYER:
+            return Response({'detail': 'Esse usuário não é um Jogador.'}, status=status.HTTP_400_BAD_REQUEST)
+        member, created = PartyMember.objects.get_or_create(gm=request.user, player=player)
+        if not created:
+            return Response({'detail': 'Jogador já está na sua lista.'}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = PartyMemberSerializer(member)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class PartyMemberDetailView(generics.DestroyAPIView):
+    permission_classes = [IsAuthenticated, IsMaster]
+    queryset = PartyMember.objects.all()
+
+    def perform_destroy(self, instance):
+        if instance.gm != self.request.user:
+            raise PermissionDenied("Você não pode remover jogadores de outra campanha.")
         instance.delete()
